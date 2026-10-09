@@ -1,12 +1,12 @@
 services:
   scouts-hub:
-    image: docker.io/library/node:22-alpine
+    image: ghcr.io/e-was-here/hub:1.0.0
     container_name: scouts-hub
     working_dir: /app
     command: node server.js
     restart: unless-stopped
     volumes:
-      - ./:/app
+      - ./data:/app/data
     environment:
       PORT: ${PORT}
       ADMIN_USER: ${ADMIN_USER:-admin}
