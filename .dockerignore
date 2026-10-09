@@ -1,0 +1,6 @@
+.git
+.github
+.env
+data
+compose.yaml
+node_modules
