@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Hub admin</title>
+<style>
+  :root { --bg:#0f1720; --panel:#182430; --txt:#e8eef4; --muted:#8aa0b3; --up:#2ecc71; --down:#e74c3c; }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--bg); color:var(--txt); font-family:system-ui,sans-serif; padding:20px 16px; }
+  .wrap { max-width:900px; margin:0 auto; }
+  h1 { font-size:1.4rem; margin-bottom:4px; }
+  a { color:#8ab4f8; }
+  .hint { color:var(--muted); font-size:.85rem; margin:10px 0 16px; line-height:1.5; }
+  #msg { min-height:1.4em; margin:8px 0 12px; }
+  #msg.ok { color:var(--up); } #msg.bad { color:#f39c12; }
+  .game { background:var(--panel); border-radius:10px; padding:12px; margin-bottom:12px; border-left:6px solid #667; }
+  .game.online { border-left-color:var(--up); } .game.offline { border-left-color:var(--down); }
+  .fields { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+  .fields label { display:flex; flex-direction:column; font-size:.75rem; color:var(--muted); gap:3px; }
+  .fields .wide { grid-column:1 / -1; }
+  input { background:#243545; color:var(--txt); border:0; border-radius:6px; padding:8px; font-size:.95rem; width:100%; }
+  .tools { display:flex; gap:6px; margin-top:10px; align-items:center; }
+  .tools .st { margin-right:auto; font-size:.8rem; color:var(--muted); }
+  button { background:#243545; color:var(--txt); border:0; border-radius:6px; padding:7px 12px; cursor:pointer; font-size:.9rem; }
+  button:hover { background:#2f4558; }
+  button.del { background:#7a2b2b; }
+  button.primary { background:#1f7a46; padding:10px 18px; font-size:1rem; }
+  .bar { display:flex; gap:10px; margin-top:6px; }
+  @media (max-width:560px) { .fields { grid-template-columns:1fr; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>⚙️ Hub admin</h1>
+  <a href="/">← Back to the games list</a>
+  <div class="hint">
+    <b>Link</b>: where the card leads (<code>/dentifrice/</code> for a game on this site, or a full <code>https://…</code> address).<br>
+    <b>Check URL</b> (optional): address the server calls every 30 s to know if the game is online. For a game on your Docker network, use the internal address
+    (e.g. <code>http://scouts-dentifrice:3000/dentifrice/api/state</code>). Any answer below HTTP 500 counts as online. Empty with a relative link = status "Unknown".
+  </div>
+  <div id="msg"></div>
+  <div id="games"></div>
+  <div class="bar">
+    <button id="add">+ Add a game</button>
+    <button id="save" class="primary">💾 Save</button>
+  </div>
+</div>
+
+<script>
+  let games = [];
+  const box = document.getElementById("games"), msg = document.getElementById("msg");
+  const say = (t, bad) => { msg.textContent = t; msg.className = bad ? "bad" : "ok"; };
+
+  function field(label, key, i, wide, placeholder) {
+    const l = document.createElement("label"); if (wide) l.className = "wide";
+    l.append(label);
+    const inp = document.createElement("input");
+    inp.value = games[i][key] || ""; inp.placeholder = placeholder || "";
+    inp.oninput = () => { games[i][key] = inp.value; };
+    l.append(inp);
+    return l;
+  }
+
+  function render() {
+    box.textContent = "";
+    games.forEach((g, i) => {
+      const d = document.createElement("div");
+      d.className = "game " + (g.online === true ? "online" : g.online === false ? "offline" : "");
+      const f = document.createElement("div"); f.className = "fields";
+      f.append(field("Name", "name", i, false, "My game"),
+               field("Link", "link", i, false, "/my-game/ or https://…"),
+               field("Description (optional)", "description", i, true, ""),
+               field("Check URL (optional)", "checkUrl", i, true, "http://container-name:3000/…"));
+      const t = document.createElement("div"); t.className = "tools";
+      const st = document.createElement("span"); st.className = "st";
+      st.textContent = g.online === true ? "● Online" : g.online === false ? "● Offline" : "● Unknown / not checked yet";
+      const up = document.createElement("button"); up.textContent = "↑"; up.onclick = () => move(i, -1);
+      const dn = document.createElement("button"); dn.textContent = "↓"; dn.onclick = () => move(i, 1);
+      const rm = document.createElement("button"); rm.className = "del"; rm.textContent = "Delete";
+      rm.onclick = () => { if (confirm(`Delete "${g.name || "this game"}" from the list?`)) { games.splice(i, 1); render(); } };
+      t.append(st, up, dn, rm);
+      d.append(f, t);
+      box.append(d);
+    });
+  }
+
+  function move(i, delta) {
+    const j = i + delta;
+    if (j < 0 || j >= games.length) return;
+    [games[i], games[j]] = [games[j], games[i]];
+    render();
+  }
+
+  async function load() {
+    const r = await fetch("api/games", { cache: "no-store" });
+    games = (await r.json()).games;
+    render();
+  }
+
+  document.getElementById("add").onclick = () => { games.push({ name: "", link: "", description: "", checkUrl: "" }); render(); };
+
+  document.getElementById("save").onclick = async () => {
+    try {
+      const r = await fetch("api/save", { method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ games: games.map(({ id, name, link, description, checkUrl }) => ({ id, name, link, description, checkUrl })) }) });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(j.error || ("HTTP " + r.status));
+      say("Saved");
+      await load();
+    } catch (e) { say(e.message, true); }
+  };
+
+  load();
+</script>
+</body>
+</html>

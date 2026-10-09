@@ -1,0 +1,19 @@
+services:
+  scouts-hub:
+    image: docker.io/library/node:22-alpine
+    container_name: scouts-hub
+    working_dir: /app
+    command: node server.js
+    restart: unless-stopped
+    volumes:
+      - ./:/app
+    environment:
+      PORT: ${PORT}
+      ADMIN_USER: ${ADMIN_USER:-admin}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD}
+    networks:
+      - proxy-net
+
+networks:
+  proxy-net:
+    external: true
